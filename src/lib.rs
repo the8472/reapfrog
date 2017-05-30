@@ -10,8 +10,6 @@ extern crate libc;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::fs::Metadata;
-use std::iter::FromIterator;
-use std::ops::Range;
 use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
@@ -105,9 +103,15 @@ impl<Src: Iterator<Item=PathBuf>> MultiFileReadahead<Src>  {
     }
 
     fn advance(&mut self) {
-        let mut budget = self.budget;
 
-        budget -= self.open.iter().map(|o| o.prefetch_pos.saturating_sub(o.read_pos)).sum::<u64>();
+        let consumed : u64 = self.open.iter().map(|o| o.prefetch_pos.saturating_sub(o.read_pos)).sum::<u64>();
+
+        let mut budget = self.budget - consumed;
+
+        // hysteresis: let the loop expend the budget to ~100% if possible, then don't loop until we fall to 50%
+        if budget < consumed {
+            return
+        }
 
         for i in 0.. {
             if budget < 64 * 1024 { break; }
@@ -120,17 +124,23 @@ impl<Src: Iterator<Item=PathBuf>> MultiFileReadahead<Src>  {
             if i > 512 { break }
 
             let ref mut p = self.open[i];
+
+            // round down
             let internal_budget = (budget >> 16) << 16;
 
 
             let mut old_offset = std::cmp::max(p.read_pos, p.prefetch_pos);
+
+            // round up
+            let blk = 64*1024;
+            old_offset = (old_offset + blk - 1) & !(blk - 1);
+            //old_offset = (old_offset >> 16) << 16;
+
             if old_offset >= p.length {
                 continue;
             }
 
-            old_offset = (old_offset >> 16) << 16;
-
-            let mut prefetch_length = std::cmp::min(p.length - old_offset, internal_budget);
+            let prefetch_length = std::cmp::min(p.length - old_offset, internal_budget);
 
             unsafe {
                 libc::posix_fadvise(p.f.as_raw_fd(), old_offset as i64, prefetch_length as i64, libc::POSIX_FADV_WILLNEED);

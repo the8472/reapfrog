@@ -1,6 +1,6 @@
 [package]
 name = "reapfrog"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["The 8472"]
 description = "Readahead and dropbehind over multiple files"
 keywords = ["linux", "ext4"]
