@@ -107,7 +107,7 @@ impl<Src: Iterator<Item=PathBuf>> MultiFileReadahead<Src>  {
     fn advance(&mut self) {
         let mut budget = self.budget;
 
-        budget -= self.open.iter().map(|o| o.prefetch_pos.saturating_sub(o.read_pos)).sum();
+        budget -= self.open.iter().map(|o| o.prefetch_pos.saturating_sub(o.read_pos)).sum::<u64>();
 
         for i in 0.. {
             if budget < 64 * 1024 { break; }
